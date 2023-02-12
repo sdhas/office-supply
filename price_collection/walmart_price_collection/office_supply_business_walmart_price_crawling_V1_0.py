@@ -48,11 +48,15 @@ def prepare_reuest_client():
 def call_url(url: str):
     while True:
         try:
-            proxy_handler = urllib.request.ProxyHandler({'http': 'http://user-83896:Strike@123@205.164.3.104:1212'})
+            proxy_handler = urllib.request.ProxyHandler({'http': 'http://user-83896:Strike$123@205.164.3.104:1212'})
+            # log_and_console_info(f'proxy_handler -> {proxy_handler}')
             opener = urllib.request.build_opener(proxy_handler)
             opener.addheaders = [('User-agent', 'Mozilla/5.0')]
             urllib.request.install_opener(opener)
+            # log_and_console_info(f'opener -> {opener}')
+            # content = urllib.request.urlopen(url).read().decode()
             content = urllib.request.urlopen(url).read().decode()
+            # log_and_console_info(f'content -> {content}')
 
             if content.__contains__('Robot or human?'):
                 logging.error('Blocked by walmart!')
@@ -90,7 +94,7 @@ def http_client():
 def make_request(session: requests.Session, url: str):
     while True:
         try:
-            response = session.get('https://www.tutorialspoint.com/python-program-to-find-the-ip-address-of-the-client', verify=False)
+            response = session.get(url, verify=False)
 
             if response.status_code == 200:
                 return response
@@ -99,6 +103,7 @@ def make_request(session: requests.Session, url: str):
                 log_and_console_error("Quiting - CAPTCHA Occurred!")
                 exit("Quiting - Captcha occurred!")
             else:
+                logging.error(req_exception, exc_info=True)
                 return
         except requests.exceptions.RequestException as req_exception:
             logging.error(req_exception, exc_info=True)
@@ -205,7 +210,7 @@ def get_identification_value():
 def create_output_file():
     if(not os.path.exists(OUTPUT_FILE)):
         output_file = open(OUTPUT_FILE, "a")
-        output_file.write("Strike ID\tUnique ID\tInventory Number/SKU\tTitle\tPrice\tReview\tRating\tImage")  # Merchant 1	Merchant Price 1	Shipping 1
+        output_file.write("Strike ID\tUnique ID\tInventory Number/SKU\tTitle\tW_SKU\tW_GTIN13\tBrand\tModel\tPrice\tAvaialbility\tCondition\tDelivery\tReview\tRating\tImage")
         output_file.write("\n")
         output_file.close()
 
