@@ -48,7 +48,7 @@ def prepare_reuest_client():
 def call_url(url: str):
     while True:
         try:
-            proxy_handler = urllib.request.ProxyHandler({'http': 'http://user-83896:Strike$123@205.164.3.104:1212'})
+            proxy_handler = urllib.request.ProxyHandler({'http': 'http://dhaskarthick-res-US:JoHT58ve38DQ@gw.ntnt.io:5959'})
             # log_and_console_info(f'proxy_handler -> {proxy_handler}')
             opener = urllib.request.build_opener(proxy_handler)
             opener.addheaders = [('User-agent', 'Mozilla/5.0')]
@@ -341,11 +341,10 @@ def main():
             # (title, price, reviews, rating, image) = extract_data(html_response)
             (title, sku, gtin13, brand, model, price, availability, item_condition, delivery, reviews, rating, image) = extract_data(web_content)
 
-            if(price != 'na'):
-                output_file = open(OUTPUT_FILE, "a", encoding='utf8', errors='ignore')
-                output_file.write(strike_id + "\t" + unique_id + "\t" + inventory_no + "\t" + title + "\t" + str(sku) + "\t" + str(gtin13) + "\t" + brand + "\t" + str(model) +
-                                  "\t" + str(price) + "\t" + availability + "\t" + item_condition + "\t" + delivery + "\t" + str(reviews) + "\t" + str(rating) + "\t" + image + "\n")
-                output_file.close()
+            output_file = open(OUTPUT_FILE, "a", encoding='utf8', errors='ignore')
+            output_file.write(strike_id + "\t" + unique_id + "\t" + inventory_no + "\t" + title + "\t" + str(sku) + "\t" + str(gtin13) + "\t" + brand + "\t" + str(model) +
+                              "\t" + str(price) + "\t" + availability + "\t" + item_condition + "\t" + delivery + "\t" + str(reviews) + "\t" + str(rating) + "\t" + image + "\n")
+            output_file.close()
 
             log_and_console_info(f'Time taken {datetime.now() - start}')
 
