@@ -15,15 +15,18 @@ INPUT_FILE = "input.txt"
 OUTPUT_FILE = "output.txt"
 ERROR_FILE = "error.txt"
 NOTFOUND_FILE = "notfound.txt"
+CREDS_FILE = 'C:\strikeaprice\creds.txt'
 
 mm_dd_yyyy = datetime.now().strftime('%m-%d-%Y')
 
-# proxies = {
-#     'http': 'http://user-83896:Strike@123@205.164.3.104:1212'
-#     # 'http': 'http://dhaskarthick:Q<R[8N0@4w)$@gw.ntnt.io:5959'
-# }
+proxy_netnut_url = None
+proxy_netnut_port = None
+proxy_netnut_username = None
+proxy_netnut_password = None
+resolved_http_proxy_url = f'http://{proxy_netnut_username}:{proxy_netnut_password}@{proxy_netnut_url}:{proxy_netnut_port}'
 
-user_agents = ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36']
+user_agents = ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36',
+               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3']
 
 urllib3.disable_warnings()
 
@@ -38,6 +41,36 @@ def log_and_console_error(message: str):
     logging.error(f'ERROR : {message}')
 
 
+def read_and_set_credentials():
+    global proxy_netnut_url
+    global proxy_netnut_port
+    global proxy_netnut_username
+    global proxy_netnut_password
+
+    log_and_console_info(f"Opening creds file {CREDS_FILE}")
+
+    with open(CREDS_FILE, 'r') as f:
+        inputs = f.readlines()
+    for input_record in inputs:
+        if(input_record.strip() != ''):
+            prop = input_record.strip().split('=')
+            if prop[0] == 'proxy.netnut.url':
+                proxy_netnut_url = prop[1]
+                log_and_console_info(f'Proxy url set : {proxy_netnut_url}')
+            elif prop[0] == 'proxy.netnut.port':
+                proxy_netnut_port = prop[1]
+                log_and_console_info(f'Proxy port set : {proxy_netnut_port}')
+            elif prop[0] == 'proxy.netnut.username':
+                proxy_netnut_username = prop[1]
+                log_and_console_info(f'Proxy username set : {proxy_netnut_username}')
+            elif prop[0] == 'proxy.netnut.password':
+                proxy_netnut_password = prop[1]
+                log_and_console_info(f'Proxy password set : masked (********)')
+    if(None in [proxy_netnut_url, proxy_netnut_port, proxy_netnut_username, proxy_netnut_password]):
+        log_and_console_error("Not all the required credentials are found!")
+        quit("Not all the required credentials are found!")
+
+
 def prepare_reuest_client():
     proxy = urllib.request.ProxyHandler({'https': 'http://user-83896:Strike$123@205.164.3.104:1212'})
     opener = urllib.request.build_opener(proxy)
@@ -46,17 +79,14 @@ def prepare_reuest_client():
 
 
 def call_url(url: str):
+    attempt = 1
     while True:
         try:
-            proxy_handler = urllib.request.ProxyHandler({'http': 'http://dhaskarthick-res-US:JoHT58ve38DQ@gw.ntnt.io:5959'})
-            # log_and_console_info(f'proxy_handler -> {proxy_handler}')
+            proxy_handler = urllib.request.ProxyHandler({'http': resolved_http_proxy_url})
             opener = urllib.request.build_opener(proxy_handler)
-            opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+            opener.addheaders = [('User-agent', random.choice(user_agents))]
             urllib.request.install_opener(opener)
-            # log_and_console_info(f'opener -> {opener}')
-            # content = urllib.request.urlopen(url).read().decode()
             content = urllib.request.urlopen(url).read().decode()
-            # log_and_console_info(f'content -> {content}')
 
             if content.__contains__('Robot or human?'):
                 logging.error('Blocked by walmart!')
@@ -64,50 +94,17 @@ def call_url(url: str):
 
             return content
 
+        except urllib.error.HTTPError as http_error:
+            if http_error.code == 404:
+                log_and_console_info(f'Product Not Found!')
+                return 'NOT_FOUND'
         except Exception as exception:
+            log_and_console_error(f'Attempt {attempt} Failed!')
+            if(attempt == 5):
+                return None
             logging.error(exception, exc_info=True)
-            wait_till(30)  # wait 2 mins before retry
-
-
-def http_client():
-    session = requests.Session()
-    session.proxies = {
-        'http': 'http://user-83896:Strike@123@205.164.3.104:1212',
-        'https': 'http://user-83896:Strike@123@205.164.3.104:1212'
-    }
-    # session.trust_env = False
-    session.headers.update(
-        {
-            # "User-Agent": random.choice(user_agents),
-            "User-Agent": 'PostmanRuntime/7.30.1',
-            "referer": "https://www.google.com"
-        }
-    )
-
-    def log_url(res, *args, **kwargs):
-        logging.info(f"{res.url}, {res.status_code}")
-
-    session.hooks["response"] = log_url
-    return session
-
-
-def make_request(session: requests.Session, url: str):
-    while True:
-        try:
-            response = session.get(url, verify=False)
-
-            if response.status_code == 200:
-                return response
-            elif response.status_code == 429:
-                print_captcha_error()
-                log_and_console_error("Quiting - CAPTCHA Occurred!")
-                exit("Quiting - Captcha occurred!")
-            else:
-                logging.error(req_exception, exc_info=True)
-                return
-        except requests.exceptions.RequestException as req_exception:
-            logging.error(req_exception, exc_info=True)
-            wait_till(10)  # wait 2 mins before retry
+            wait_till(30)  # wait 30 seconds before retry
+            attempt = attempt + 1
 
 
 def wait_till(duration: int):
@@ -241,9 +238,7 @@ def extract_next_urls(response: requests.Response):
 # def extract_data(response: requests.Response):
 def extract_data(content: str):
 
-    # log_and_console_info(response.text)
     title = sku = gtin13 = brand = model = price = availability = item_condition = delivery = reviews = rating = image = 'na'
-    # soup = BeautifulSoup(response.text, 'lxml')
     soup = BeautifulSoup(content, 'lxml')
 
     # Saving the html content as a html file
@@ -282,6 +277,7 @@ def extract_data(content: str):
 
 
 def main():
+    read_and_set_credentials()
     logging.basicConfig(filename='app.log', format='%(asctime)s %(message)s', level=logging.INFO)
     log_and_console_info(f'Last seen date is {mm_dd_yyyy}')
     program_start_time = datetime.now()
@@ -289,9 +285,6 @@ def main():
 
     # Create the output file with headers
     create_output_file()
-
-    # client = http_client()
-    # prepare_reuest_client()
 
     # Returns 'none' if there is no identification file created
     last_id = get_identification_value()
@@ -324,13 +317,10 @@ def main():
         log_and_console_info(f"Searching product with id = {strike_id} and url {url}")
         time.sleep(0.5)  # Sleeping for 0.5 second
         start = datetime.now()
-        # html_response = make_request(client, url_in)
-        # log_and_console_info(html_response.content)
-        # log_and_console_info(f'Searching product with url {url}')
-        log_and_console_info("Sleeping for 15 seconds!")
-        time.sleep(15)  # sleeping for 30 seconds
+
+        log_and_console_info("Sleeping for 1 second!")
+        time.sleep(1)  # sleeping for 1 second
         web_content = call_url(url)
-        # log_and_console_info(web_content)
 
         # if html_response is None:
         if web_content is None:
@@ -338,8 +328,10 @@ def main():
             write_into_error_file(input_record)
             continue  # Skipping after writing into error file
         else:
-            # (title, price, reviews, rating, image) = extract_data(html_response)
-            (title, sku, gtin13, brand, model, price, availability, item_condition, delivery, reviews, rating, image) = extract_data(web_content)
+            title = sku = gtin13 = brand = model = price = availability = item_condition = delivery = reviews = rating = image = 'na'
+
+            if(web_content != 'NOT_FOUND'):
+                (title, sku, gtin13, brand, model, price, availability, item_condition, delivery, reviews, rating, image) = extract_data(web_content)
 
             output_file = open(OUTPUT_FILE, "a", encoding='utf8', errors='ignore')
             output_file.write(strike_id + "\t" + unique_id + "\t" + inventory_no + "\t" + title + "\t" + str(sku) + "\t" + str(gtin13) + "\t" + brand + "\t" + str(model) +
