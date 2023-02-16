@@ -89,23 +89,24 @@ def update_cookie_from_response(response):
     tmp_cookie = ''
     for header in response.getheaders():
         if header[0] == 'Set-Cookie':
-            if str(header[1]).startswith(tuple(['auth', 'hasLocData', 'bstc', 'mobileweb', 'xptc', 'xpth', 'xpa', 'xpm', 'exp-ck'])):
+            if str(header[1]).startswith(tuple(['auth', 'hasLocData', 'bstc', 'mobileweb', 'xptc', 'xpth', 'xpa', 'xpm', 'exp-ck', 'bm_mi'])):
                 continue  # skipping to add in cookie
-            tmp_cookie = tmp_cookie + header[1] + ';'
+
+            tmp_cookie = tmp_cookie + header[1].split(';')[0] + ';'
 
     if tmp_cookie != '':
         cookie = tmp_cookie
+        log_and_console_info('Cookie update!')
 
 
 def call_url(url: str):
-    global heaers
-    global cookie
     attempt = 1
     while True:
         try:
             heaers.update({"User-Agent": random.choice(user_agents)})
             if cookie is not None:
                 heaers.update({'cookie': cookie})
+            # log_and_console_info(f'cookie {cookie}')
 
             sid = random.randint(1111, 99999999)
             proxy_netnut_username_sid = f'{proxy_netnut_username}-sid-{sid}'
