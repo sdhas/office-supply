@@ -1,14 +1,15 @@
 import logging
 import os
-import requests
 import time
 import urllib3
 import json
 import random
 import urllib.request
+# import requests
 
 from bs4 import BeautifulSoup
 from datetime import datetime
+from socket import timeout
 
 IDENTIFICATION_FILE = "identification.txt"
 INPUT_FILE = "input.txt"
@@ -38,7 +39,8 @@ heaers = {
     "sec-fetch-dest": "document",
     "sec-fetch-mode": "navigate",
     "sec-fetch-site": "same-origin",
-    "upgrade-insecure-requests": "1"
+    "upgrade-insecure-requests": "1",
+    "hasLocData": "1"
 }
 
 
@@ -87,64 +89,12 @@ def update_cookie_from_response(response):
     tmp_cookie = ''
     for header in response.getheaders():
         if header[0] == 'Set-Cookie':
+            if str(header[1]).startswith(tuple(['auth', 'hasLocData', 'bstc', 'mobileweb', 'xptc', 'xpth', 'xpa', 'xpm', 'exp-ck'])):
+                continue  # skipping to add in cookie
             tmp_cookie = tmp_cookie + header[1] + ';'
 
     if tmp_cookie != '':
         cookie = tmp_cookie
-
-
-# def http_client():
-#     session = requests.Session()
-#     session.headers.update(
-#         {
-#             "User-Agent": random.choice(user_agents),
-#             "referer": "https://www.google.com"
-#         }
-#     )
-
-#     def log_url(res, *args, **kwargs):
-#         logging.info(f"{res.url}, {res.status_code}")
-
-#     session.hooks["response"] = log_url
-#     return session
-
-
-# def make_request(url: str):
-#     attempt = 1
-#     while True:
-#         try:
-#             session = http_client()
-
-#             sid = random.randint(1111, 99999999)
-#             proxy_netnut_username_sid = f'{proxy_netnut_username}-sid-{sid}'
-#             resolved_http_proxy_url = f'http://{proxy_netnut_username_sid}:{proxy_netnut_password}@{proxy_netnut_url}:{proxy_netnut_port}'
-#             # log_and_console_info(resolved_http_proxy_url)
-#             session.proxies = {'http': resolved_http_proxy_url, 'https': resolved_http_proxy_url}
-#             response = session.get(url)
-#             ip_content = session.get('https://ip.nf/me.json')
-#             log_and_console_info(f'IP {ip_content.text}')
-#             if response.status_code == 200:
-#                 if response.text.__contains__('Robot or human?'):
-#                     log_and_console_error('Robot or human? - Robot Detected!')
-#                     print_robot_error()
-#                     raise Exception('Robot or human?')
-#                 return response
-#             elif response.status_code == 404:
-#                 log_and_console_info('Product Not Found!')
-#                 return 'NOT_FOUND'
-#             elif response.status_code == 429:
-#                 print_captcha_error()
-#                 raise Exception('Captcha Error')
-#             else:
-#                 return
-#         except Exception as exception:
-
-#             log_and_console_error(f'Attempt {attempt} Failed!')
-#             if(attempt == 5):
-#                 return None
-#             logging.error(exception, exc_info=True)
-#             wait_till(5)  # wait before retry
-#             attempt = attempt + 1
 
 
 def call_url(url: str):
@@ -178,11 +128,38 @@ def call_url(url: str):
             # Updating the global cookie with the cookies from response
             update_cookie_from_response(response)
             return content
+        except urllib.error.URLError as error:
+            log_and_console_error(f'URLError occurred! {error.reason}')
+            if isinstance(error.reason, timeout):
+                log_and_console_error('Timeout Exception occurred!')
+                raise Exception('Timeout Exception occurred!')
 
         except urllib.error.HTTPError as http_error:
-            if http_error.code == 404:
-                log_and_console_info(f'Product Not Found!')
+            if http_error.code == 403:
+                # Forbidden error
+                log_and_console_error('Forbidden - Website is Blocking!')
+                raise Exception('Forbidden - Website is Blocking!')
+
+            elif http_error.code == 404:
+                # Product not found
+                log_and_console_error(f'Product Not Found!')
                 return 'NOT_FOUND'
+
+            elif http_error.code == 407:
+                # proxy Authentication error
+                log_and_console_error('Proxy Authentication Failed! Quiting!')
+                quit('Proxy Authentication Failed! Quiting!')
+
+            elif http_error.code == 490:
+                # No peers error
+                log_and_console_error('No peers in the endpoint used.')
+                raise Exception('No peers in the endpoint used.')
+
+            elif http_error.code == 502 or http_error.code == 503:
+                # Proxy error
+                log_and_console_error(f'Proxy Error. {http_error.code}')
+                raise Exception('Proxy Error.')
+
         except Exception as exception:
 
             log_and_console_error(f'Attempt {attempt} Failed!')
@@ -407,9 +384,7 @@ def main():
         log_and_console_info(f"Sleeping for {random_sleep} second!")
         time.sleep(random_sleep)  # sleeping
         html_response = call_url(url)
-        # html_response = make_request(url)
 
-        # if html_response is None:
         if html_response is None:
             log_and_console_error("Error Occurred!")
             write_into_error_file(input_record)
@@ -421,8 +396,8 @@ def main():
                 (title, sku, gtin13, brand, model, price, availability, item_condition, delivery, reviews, rating, image) = extract_data(html_response)
 
             output_file = open(OUTPUT_FILE, "a", encoding='utf8', errors='ignore')
-            output_file.write(strike_id + "\t" + unique_id + "\t" + inventory_no + "\t" + title + "\t" + str(sku) + "\t" + str(gtin13) + "\t" + brand + "\t" + str(model) +
-                              "\t" + str(price) + "\t" + availability + "\t" + item_condition + "\t" + delivery + "\t" + str(reviews) + "\t" + str(rating) + "\t" + image + "\n")
+            output_file.write(strike_id + "\t" + unique_id + "\t" + inventory_no + "\t" + title + "\t" + str(sku) + "\t" + str(gtin13) + "\t" + brand + "\t"
+                              + str(model) + "\t" + str(price) + "\t" + availability + "\t" + item_condition + "\t" + delivery + "\t" + str(reviews) + "\t" + str(rating) + "\t" + image + "\n")
             output_file.close()
 
             log_and_console_info(f'Time taken {datetime.now() - start}')
