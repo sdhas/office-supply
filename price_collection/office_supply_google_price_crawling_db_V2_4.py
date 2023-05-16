@@ -29,7 +29,8 @@ report_time = 'all'
 report_date = 'None'
 device_name = socket.gethostname()
 CLIENT = 'officesupply'
-OPEN_INPUT_BATCH_SIZE = 10
+OPEN_INPUT_BATCH_SIZE = 7
+OUTPUT_BATCH_SIZE = 5
 RETRY_INPUT_BATCH_SIZE = 5
 
 ################################################ Strike-Io-API ################################################
@@ -526,7 +527,7 @@ def main():
     http_session = http_client()
 
     try:
-        logging.basicConfig(filename='app.log', format='%(asctime)s %(message)s', level=logging.INFO)
+        logging.basicConfig(filename='app_log.txt', format='%(asctime)s %(message)s', level=logging.INFO)
 
         log_and_console_info(f'Received {len(sys.argv)} arguments')
 
@@ -539,7 +540,7 @@ def main():
             log_and_console_info(f"Arguments passed to the script [reportDate={report_date}]")
 
         program_start_time = datetime.now()
-        log_and_console_info(f"##### Starting the crawling at {program_start_time}")
+        log_and_console_info(f"##### Starting the crawling at {program_start_time} #####")
 
         input_available = True
         while(input_available):
@@ -550,15 +551,25 @@ def main():
                 request_inputs = get_inputs_from_api('OPEN')
 
             if(len(request_inputs) > 0):
+                inputs_process_start_time = datetime.now()
                 output_list = []
+                inputs_count = len(request_inputs)
+                input_index = 0
                 for input in request_inputs:
-                    # Calling the scareForInput method to navigate to the url
+                    # increasing the index
+                    input_index = input_index + 1
+                    # Calling the scrape_data method to navigate to the url
                     # and get the required information from the website.
                     output = scrape_data(input)
                     if output is not None:
                         output_list.append(output)
-                # Updating the outputs
-                update_products(output_list)
+                    # Updating the outputs in chunk of OUTPUT_BATCH_SIZE, and the rest outputs when input reached its count
+                    if len(output_list) == OUTPUT_BATCH_SIZE or input_index == inputs_count:
+                        # Updating the outputs
+                        update_products(output_list)
+                        log_and_console_info(f'Time taken to process {len(output_list)} outputs is {datetime.now() - inputs_process_start_time} ')
+                        # Clearing the output list
+                        output_list.clear()
 
             elif(do_retry == False and len(request_inputs) == 0):
                 log_and_console_info('No more OPEN inputs found! Setting the do_retry flag to True.')
