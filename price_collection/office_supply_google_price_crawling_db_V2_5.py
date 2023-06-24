@@ -35,7 +35,8 @@ RETRY_INPUT_BATCH_SIZE = 5
 
 ################################################ Strike-Io-API ################################################
 
-STRIKE_IO_API_BASE_URL = "http://156.67.218.158:8282/sap-io-api/google"
+STRIKE_IO_API_BASE_URL = "http://194.163.43.249:8282/sap-io-api/google"
+# STRIKE_IO_API_BASE_URL = "http://156.67.218.158:8282/sap-io-api/google"
 # STRIKE_IO_API_BASE_URL = "http://localhost:8383/strike-io-api/google"
 STRIKE_IO_API_GET_OPEN_INPUT_URL = f"{STRIKE_IO_API_BASE_URL}/inputs?client={CLIENT}&type=OPEN&count={OPEN_INPUT_BATCH_SIZE}&reportDate=<report-date>&reportTime=<report-time>"
 STRIKE_IO_API_GET_RETRY_INPUT_URL = f"{STRIKE_IO_API_BASE_URL}/inputs?client={CLIENT}&type=RETRY&count={RETRY_INPUT_BATCH_SIZE}&reportDate=<report-date>&reportTime=<report-time>"
