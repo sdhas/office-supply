@@ -1,6 +1,5 @@
 import boto3
 import logging
-import copy
 import json
 import re
 import requests
@@ -18,17 +17,15 @@ logger.setLevel(logging.INFO)
 #### Lambda #####
 """
 02-Feb-2024 - Disabling the retry for NOT FOUND
+12-Feb-2024 - Storing the output as | seperated
 """
 
-TABLE_NAME = "office_supply_google_price_crawling_db"
 SQS_GOOGLE_OFFICE_SUPPLY_URL = "https://sqs.us-east-2.amazonaws.com/629901033185/office_supply_google_price_crawling_queue"
 OFFICE_SUPPLY_GOOGLE_OUTPUT_SQS_URL = "https://sqs.us-east-2.amazonaws.com/629901033185/office_supply_google_price_crawling_output_queue"
 
-
 sqs = boto3.client('sqs', region_name="us-east-2")
 
-dynamodb = boto3.resource('dynamodb', region_name="us-east-2")
-table = dynamodb.Table(TABLE_NAME)
+mm_dd_yyyy = datetime.now().strftime('%m-%d-%Y')
 
 user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36'
 
@@ -63,49 +60,26 @@ class Request:
     def __init__(self, req_string:str):
         if req_string is not None and req_string.strip() != "":        
             req_splits = req_string.strip().split('\t')
-            self.strikeId = req_splits[0]
-            self.uniqueId = req_splits[1]
+            self.strike_id = req_splits[0]
+            self.unique_id = req_splits[1]
             self.url = req_splits[2]
             self.sku = req_splits[3]
-            self.reportDate = req_splits[4]
-            self.reportTime = req_splits[5]
-            self.status = req_splits[6]
-            self.attemptCount = req_splits[7]
-            self.id = f"{req_splits[0]}_{req_splits[4]}_{req_splits[5]}".replace(".","-")
+            self.datetime = str(req_splits[4])
+            self.id = f"{req_splits[0]}_{req_splits[4]}".replace(".","-")
             self.request_string = req_string
 
     def get_request_string(self): 
-        return f"{self.strikeId}\t{self.uniqueId}\t{self.url}\t{self.sku}\t{self.reportDate}\t{self.reportTime}\t{self.status}\t{self.attemptCount}"
+        return f"{self.strike_id}\t{self.unique_id}\t{self.url}\t{self.sku}\t{self.datetime}"
 
 
 class Product:
     """ Do not change the attribute, this is should be identical to the Output class in the strik-io-api"""
 
-    def __init__(self, id, strike_id, unique_id, sku, merchants, report_date, report_time):
-        self.client = CLIENT
+    def __init__(self, id, report_date_time, output_str, status):
         self.id = id
-        self.strikeId = strike_id
-        self.uniqueId = unique_id
-        self.sku = sku
-        # self.merchants = json.dumps(merchants, cls=ModelEncoder)
-        self.merchants = set_merchants(merchants)
-        # self.merchants = merchants
-        self.reportDate = report_date
-        self.reportTime = report_time
-
-def set_merchants(merchants : list):
-    merchants_list = []
-    for m in merchants:
-        merchants_list.append(m.__dict__)
-    return merchants_list
-
-
-def send_message_to_input_queue(message: object):
-    sqs.send_message(
-        QueueUrl=SQS_GOOGLE_OFFICE_SUPPLY_URL,
-        MessageBody=message
-    )
-
+        self.datetime = report_date_time
+        self.output = output_str
+        self.status = status
 
 def get_inputs_from_event(event):
 
@@ -119,8 +93,8 @@ def get_inputs_from_event(event):
 
             input_raw_splits = str(input_raw).split('\t')
 
-            if len(input_raw_splits) != 8:
-                logger.error(f"Input has only {len(input_raw_splits)}/6 - {input_raw}")
+            if len(input_raw_splits) != 5:
+                logger.error(f"Input has only {len(input_raw_splits)}/5 - {input_raw}")
                 continue
 
             # log_and_console_info(f"Received Input to search >> {input_raw}")
@@ -130,43 +104,12 @@ def get_inputs_from_event(event):
             inputs.append(input_req)
 
     except requests.exceptions.RequestException as req_exception:
-        # print(req_exception, exc_info=True)
         logger.error(req_exception, exc_info=True)
 
     return inputs
 
-
-def update_input_to_retry(input: Request, status: str):
-    """Method to update the input to retry in strike-io-api"""
-
-    attempt_count = int(input.attemptCount) + 1
-
-    retry_input = copy.copy(input)
-
-    retry_input.attemptCount = attempt_count
-    retry_input.reportDate = report_date
-    retry_input.reportTime = report_time
-
-    log_and_console_info(f'Retry - Updating input status {input.status} to {status}')
-
-    if(status in ['RETRY', 'NOT_FOUND', 'NO_MERCHANT']):
-        if(attempt_count > 1):
-            retry_input.status = 'CLOSED'
-        else:
-            retry_input.status = 'RETRY'
-
-        # update to queue
-        retry_inputs = [retry_input]
-        retry_input_json = json.dumps(retry_inputs, cls=ModelEncoder)
-        log_and_console_info(f"Input with ID {retry_input.id} updated [attempt_count={retry_input.attemptCount}, status={retry_input.status}]")
-        # staus and attempt count to update
-        send_message_to_input_queue(retry_input_json)
-
-    elif(status == 'INPUT_ERROR'):
-        retry_input.status = 'INPUT_ERROR'
-
-def update_products_to_queue(products: list):
-    log_and_console_info(f'Updating outputs to queue {len(products)}')
+def update_products_to_output_queue(products: list):
+    log_and_console_info(f'Updating outputs to ouput queue {len(products)}')
 
     entries = []
     for product in products:
@@ -181,28 +124,6 @@ def update_products_to_queue(products: list):
         logger.error(f"Error occurred while sending message to output queue. {response}")
         raise
 
-def update_product(product: Product):
-
-    log_and_console_info(f'Updating output to database {product.strikeId}')
-
-    try:
-        response = table.put_item(
-            Item=product.__dict__
-        )
-    except Exception as ex:
-        logger.error(f"Exception occurrecd while trying to insert output in database. {ex}")
-        
-
-def update_products(products: list):
-
-    log_and_console_info(f'Updating {len(products)} outputs!')
-    try:
-        for product in products:
-            response = table.put_item(
-                Item=product.__dict__
-            )
-    except Exception as ex:
-        logger.error(f"Exception occurrecd while trying to insert multiple outputs in database. {ex}")
 #####################
 
 
@@ -344,7 +265,8 @@ def extract_data(response: requests.Response):
                                 shipping = value
                 if(name == 'na' or price == 'na' or shipping == 'See website'):
                     continue  # Skipping the sellers with invaldi data
-
+                
+                name = name.replace('|',' ')
                 name = re.sub('^[^0-9a-zA-Z]', '', unidecode(name))
 
                 # log_and_console_info(f'Seller [name={name}, price={price}, shipping={shipping}]')
@@ -370,11 +292,11 @@ def extract_data(response: requests.Response):
 
 def scrape_data(req: Request):
     prod_id = req.id
-    strike_id = req.strikeId
-    unique_id = req.uniqueId
+    strike_id = req.strike_id
+    unique_id = req.unique_id
     sku = req.sku
     url_in = req.url
-    report_date = req.reportDate
+    report_date_time = req.datetime
 
     log_and_console_info(f"Searching product with [strike_id={strike_id}, sku={sku}, unique_id={unique_id}]")
 
@@ -392,6 +314,7 @@ def scrape_data(req: Request):
 
         if html_response is None:
             log_and_console_error("Error Occurred!")
+            return Product(prod_id, report_date_time, None, "ERROR")
             # write_into_error_file(input_record)
             # update_input_to_retry(req, 'RETRY')
             # continue  # Skipping after writing into error file
@@ -408,7 +331,7 @@ def scrape_data(req: Request):
                     next_page_response = make_request(next_url)
                     if next_page_response is not None:
                         sellers_details.extend(extract_data(next_page_response))
-
+            
             if(len(sellers_details)):
 
                 found_sellers = set()
@@ -422,18 +345,26 @@ def scrape_data(req: Request):
                 dist_sellers.sort(key=lambda x: float(x.price))
 
                 # Limiting the seller count to 25
-                dist_sellers = dist_sellers[0:25]
+                dist_sellers = dist_sellers[0:25]                
 
                 log_and_console_info(f'Time taken to scrape this product {datetime.now() - start}')
                 log_and_console_info(f"Found {len(dist_sellers)} sellers")
-                if(len(dist_sellers)):
-                    return Product(prod_id, strike_id, unique_id, sku, dist_sellers, report_date, report_time)
+                
+                sellers_details_str = ""
+                status = "OK"                    
+                    
+                # Joining list of seller objects 
+                sellers_details_str = '|'.join(["|".join([sel.name, str(sel.price), str(sel.shipping)]) for sel in dist_sellers])
+
+                ouput_str = sku + "|" + mm_dd_yyyy + "|" + sellers_details_str
             else:
                 log_and_console_info("Not Found valid sellers!")
-                # update_input_to_retry(req, 'NOT_FOUND')
+                status = "NO_SELLERS"
+                ouput_str = None
+
+            return Product(prod_id, report_date_time, ouput_str, status)
     else:
         log_and_console_error("Error - Not valid google url!")
-        # update_input_to_retry(req, 'NOT_FOUND')
 
 
 def lambda_handler(event, context):
@@ -461,7 +392,7 @@ def lambda_handler(event, context):
                     outputs.append(output)
         
         if len(outputs):
-            update_products_to_queue(outputs)
+            update_products_to_output_queue(outputs)
 
         log_and_console_info(f"##### Program execution time is {datetime.now() - program_start_time}")
 

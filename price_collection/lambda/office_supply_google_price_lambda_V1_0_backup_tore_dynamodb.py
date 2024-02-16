@@ -16,14 +16,9 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 #### Lambda #####
-"""
-02-Feb-2024 - Disabling the retry for NOT FOUND
-"""
 
 TABLE_NAME = "office_supply_google_price_crawling_db"
 SQS_GOOGLE_OFFICE_SUPPLY_URL = "https://sqs.us-east-2.amazonaws.com/629901033185/office_supply_google_price_crawling_queue"
-OFFICE_SUPPLY_GOOGLE_OUTPUT_SQS_URL = "https://sqs.us-east-2.amazonaws.com/629901033185/office_supply_google_price_crawling_output_queue"
-
 
 sqs = boto3.client('sqs', region_name="us-east-2")
 
@@ -71,7 +66,7 @@ class Request:
             self.reportTime = req_splits[5]
             self.status = req_splits[6]
             self.attemptCount = req_splits[7]
-            self.id = f"{req_splits[0]}_{req_splits[4]}_{req_splits[5]}".replace(".","-")
+            self.id = f"{req_splits[0]}|{req_splits[4]}|{req_splits[5]}"
             self.request_string = req_string
 
     def get_request_string(self): 
@@ -87,17 +82,12 @@ class Product:
         self.strikeId = strike_id
         self.uniqueId = unique_id
         self.sku = sku
-        # self.merchants = json.dumps(merchants, cls=ModelEncoder)
-        self.merchants = set_merchants(merchants)
+        self.merchants = json.dumps(merchants, cls=ModelEncoder)
         # self.merchants = merchants
         self.reportDate = report_date
         self.reportTime = report_time
 
-def set_merchants(merchants : list):
-    merchants_list = []
-    for m in merchants:
-        merchants_list.append(m.__dict__)
-    return merchants_list
+# Method to get the inputs from the strike-io-api
 
 
 def send_message_to_input_queue(message: object):
@@ -164,22 +154,6 @@ def update_input_to_retry(input: Request, status: str):
 
     elif(status == 'INPUT_ERROR'):
         retry_input.status = 'INPUT_ERROR'
-
-def update_products_to_queue(products: list):
-    log_and_console_info(f'Updating outputs to queue {len(products)}')
-
-    entries = []
-    for product in products:
-        # log_and_console_info(f'Output product id is {product.id}')
-        entry = {'Id': product.id, 
-                 'MessageBody': json.dumps(product, cls=ModelEncoder)}
-        entries.append(entry)
-
-    response = sqs.send_message_batch(QueueUrl=OFFICE_SUPPLY_GOOGLE_OUTPUT_SQS_URL, 
-                                        Entries=entries)
-    if response.get('Failed') is not None:
-        logger.error(f"Error occurred while sending message to output queue. {response}")
-        raise
 
 def update_product(product: Product):
 
@@ -393,7 +367,7 @@ def scrape_data(req: Request):
         if html_response is None:
             log_and_console_error("Error Occurred!")
             # write_into_error_file(input_record)
-            # update_input_to_retry(req, 'RETRY')
+            update_input_to_retry(req, 'RETRY')
             # continue  # Skipping after writing into error file
         else:
             sellers_details = extract_data(html_response)            
@@ -430,10 +404,10 @@ def scrape_data(req: Request):
                     return Product(prod_id, strike_id, unique_id, sku, dist_sellers, report_date, report_time)
             else:
                 log_and_console_info("Not Found valid sellers!")
-                # update_input_to_retry(req, 'NOT_FOUND')
+                update_input_to_retry(req, 'NOT_FOUND')
     else:
         log_and_console_error("Error - Not valid google url!")
-        # update_input_to_retry(req, 'NOT_FOUND')
+        update_input_to_retry(req, 'NOT_FOUND')
 
 
 def lambda_handler(event, context):
@@ -450,18 +424,14 @@ def lambda_handler(event, context):
         inputs_count = len(request_inputs)
 
         log_and_console_info(f"Number of inputs received is {inputs_count}")
-        outputs =[]
+
         if(inputs_count > 0):
             for input in request_inputs:
                 # Calling the scrape_data method to navigate to the url
                 # and get the required information from the website.
                 output = scrape_data(input)
                 if output is not None:
-                    # update_product(output)  
-                    outputs.append(output)
-        
-        if len(outputs):
-            update_products_to_queue(outputs)
+                    update_product(output)  
 
         log_and_console_info(f"##### Program execution time is {datetime.now() - program_start_time}")
 
