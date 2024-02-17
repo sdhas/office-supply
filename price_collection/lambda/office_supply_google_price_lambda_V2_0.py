@@ -266,7 +266,8 @@ def extract_data(response: requests.Response):
                 if(name == 'na' or price == 'na' or shipping == 'See website'):
                     continue  # Skipping the sellers with invaldi data
                 
-                name = name.replace('|',' ')
+                # Replacing , | from the seller name
+                name = name.replace(',',' ').replace('|',' ')
                 name = re.sub('^[^0-9a-zA-Z]', '', unidecode(name))
 
                 # log_and_console_info(f'Seller [name={name}, price={price}, shipping={shipping}]')
