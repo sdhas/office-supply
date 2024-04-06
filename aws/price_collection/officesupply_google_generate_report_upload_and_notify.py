@@ -12,7 +12,7 @@ CLIENT = "OfficeSupply"
 REPORT_TYPE = "Google"
 
 BASE_FOLDER = os.getenv('BASE_FOLDER')
-BUCKET_NAME = os.getenv('INPUT_BUCKET')
+BUCKET_NAME = os.getenv('BUCKET_NAME')
 TABLE_NAME = os.getenv('TABLE_NAME')
 NOTIFICATION_SQS_URL = os.getenv("NOTIFICATION_SQS_URL","https://sqs.us-east-2.amazonaws.com/629901033185/chitti_notifications")
 
