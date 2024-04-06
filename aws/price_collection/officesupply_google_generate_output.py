@@ -13,7 +13,7 @@ TABLE_NAME = os.getenv('TABLE_NAME')
 BASE_FOLDER = os.getenv('BASE_FOLDER') 
 BUCKET_NAME = os.getenv('BUCKET_NAME')
 
-OUTPUT_FOLDER = f"{BASE_FOLDER}/ouput"
+OUTPUT_FOLDER = f"{BASE_FOLDER}/output"
 
 dynamodb = boto3.resource('dynamodb', region_name="us-east-2")
 table = dynamodb.Table(TABLE_NAME)
@@ -46,12 +46,12 @@ def create_file_with_input(file_name:str, item_list: list):
         with open(file_name, 'w', encoding='utf8', errors='ignore') as file:
             for item in item_list:
                 req = item.get('req')
-                input_string = ",".join(req['input_string'].split('\t')[:-1])
+                input_string = ",".join(req['request_string'].split('\t')[:-1])
                 file.write(f"{input_string}\n")
             
             file.close()               
                 
-        s3_path = OUTPUT_FOLDER + file_name
+        s3_path = f"{OUTPUT_FOLDER}/{file_name}"
         s3.upload_file(file_name, BUCKET_NAME, s3_path)
         logging.info(f"Uploaded file {file_name}")
                     
@@ -60,12 +60,14 @@ def create_file_with_input(file_name:str, item_list: list):
 
 def lambda_handler(event, context):
 
+    report_date = datetime.now(timezone.utc).strftime('%m%d%Y')
+
     if 'report_date' in event:
-        report_date_db = str(event['report_date'])
+        report_date = str(event['report_date'])
 
-    report_datetime_db = f"{report_date_db}"
+    report_datetime_db = f"{report_date}"
 
-    logging.info(f"Getting the report generated for date {report_date_db}")
+    logging.info(f"Getting the report generated for date {report_date}")
     
     try:
         last_evaluated_key = None
@@ -96,7 +98,7 @@ def lambda_handler(event, context):
         if len(items):
             logger.info(f"Total number of records : {len(items)}")
             
-            file_name = f"Output_{report_datetime_db}_MT.txt"
+            file_name = f"Output_{report_datetime_db}.csv"
             not_found_file_name = f"Not_Found_{report_datetime_db}.txt"
             no_sellers_file_name = f"No_Sellers_{report_datetime_db}.txt"
             error_file_name = f"Error_{report_datetime_db}.txt"
@@ -122,9 +124,8 @@ def lambda_handler(event, context):
             
                 os.chdir('/tmp/')           
 
-                report_stat = f"Records count is [Total={len(items)}]"
+                report_stat = f"Records count is [Total={len(ok_list)}]"
                 logging.info(report_stat)
-                ok_message = ok_message.replace('<msg_details>',report_stat)
 
                 with open(file_name, 'w') as out_file:
                     # Inventory Number/SKU	Last Seen	Merchant 1	Merchant Price 1	Shipping 1
@@ -134,22 +135,25 @@ def lambda_handler(event, context):
                         out_file.write(f",Merchant {i},Merchant Price {i},Shipping {i}")
                     out_file.write("\n")
 
-                    for item in items:
+                    for item in ok_list:
                         # print(f"item > {item}")
                         # print(f"Item type is {type(item)}")
                         # print(f"Merchant type is {type(item.get('merchants'))}")
                         ouput_str = item.get('output')
                         if len(ouput_str):
                             modified_ouput_str = ouput_str.replace("|",",")
-                            out_file.write(f"{modified_ouput_str}\n")          
-                    
-                    s3_path = OUTPUT_FOLDER + file_name
-                    s3.upload_file(file_name, BUCKET_NAME, s3_path)
+                            out_file.write(f"{modified_ouput_str}\n")     
 
-                    logging.info(f"Uploaded file {file_name}")
-                                
-                    # remove the file from /tmp/
-                    os.remove(file_name)
+                # Closing file                   
+                out_file.close()   
+
+                s3_path = f"{OUTPUT_FOLDER}/{file_name}"
+                s3.upload_file(file_name, BUCKET_NAME, s3_path)
+
+                logging.info(f"Uploaded output file {file_name}")
+                            
+                # remove the file from /tmp/
+                os.remove(file_name)
             else:
                 logging.error("No records found for generting report.")
 

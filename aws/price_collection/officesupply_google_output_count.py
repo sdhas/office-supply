@@ -9,13 +9,13 @@ from boto3.dynamodb.conditions import Attr
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-report_date = datetime.now(timezone.utc).strftime('%m%d%Y')
-
 TABLE_NAME = os.getenv('TABLE_NAME')
 dynamodb = boto3.resource('dynamodb', region_name="us-east-2")
 table = dynamodb.Table(TABLE_NAME)
 
 def lambda_handler(event, context):  
+
+    report_date = datetime.now(timezone.utc).strftime('%m%d%Y')
 
     if 'report_date' in event:
         report_date = str(event['report_date'])

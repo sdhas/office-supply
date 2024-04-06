@@ -4,7 +4,6 @@ import json
 import re
 import os
 import requests
-import time
 import urllib3
 
 from bs4 import BeautifulSoup
@@ -59,9 +58,10 @@ class Request:
 
 class Product:
 
-    def __init__(self, id, report_date_time, output_str, status):
-        self.id = id
-        self.datetime = report_date_time
+    def __init__(self, req: Request, output_str, status):
+        self.id = req.id
+        self.req = req
+        self.datetime = req.datetime
         self.output = output_str
         self.status = status
 
@@ -243,12 +243,10 @@ def extract_data(response: requests.Response):
 
 
 def scrape_data(req: Request):
-    prod_id = req.id
     strike_id = req.strike_id
     unique_id = req.unique_id
     sku = req.sku
     url_in = req.url
-    report_date_time = req.datetime
 
     log_and_console_info(f"Searching product with [strike_id={strike_id}, sku={sku}, unique_id={unique_id}]")
 
@@ -266,7 +264,7 @@ def scrape_data(req: Request):
 
         if html_response is None:
             log_and_console_error("Error Occurred!")
-            return Product(prod_id, report_date_time, None, "ERROR")
+            return Product(req, None, "ERROR")
             # write_into_error_file(input_record)
             # update_input_to_retry(req, 'RETRY')
             # continue  # Skipping after writing into error file
@@ -314,7 +312,7 @@ def scrape_data(req: Request):
                 status = "NO_SELLERS"
                 ouput_str = None
 
-            return Product(prod_id, report_date_time, ouput_str, status)
+            return Product(req, ouput_str, status)
     else:
         log_and_console_error("Error - Not valid google url!")
 

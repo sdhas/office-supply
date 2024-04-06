@@ -106,7 +106,7 @@ def send_success_email(file_name : str):
     logger.info("Sending mail to client on success report")
     
     sent_to_list = MAIL_TO
-    sent_subject = f"Report From Strikeaprice.com"
+    sent_subject = "Report From Strikeaprice.com"
     sent_body = f"Hi,\n\nGood Day to You.\n\nWe have uploaded the daily report in the ftp now.\n\nKindly check and let us know if there's any feedback.\n\nPath : /Reports => {file_name}\n\nRegards,\nSanjutha."
 
     send_email(sent_to_list, sent_subject, sent_body)
@@ -207,25 +207,27 @@ def lambda_handler(event, context):
                     ouput_str = item.get('output')
                     if len(ouput_str):
                         modified_ouput_str = ouput_str.replace("|",",")
-                        out_file.write(f"{modified_ouput_str}\n")          
-                
-                s3_path = REPORT_FOLDER + file_name
-                s3.upload_file(file_name, BUCKET_NAME, s3_path)
-                
-                # creating FTP connection
-                ftp = FTP(FTP_HOST, FTP_USER, FTP_PWD)
+                        out_file.write(f"{modified_ouput_str}\n")   
+            # Closing file                   
+            out_file.close()
 
-                upload_to_ftp(file_name)
+            s3_path = REPORT_FOLDER + file_name
+            s3.upload_file(file_name, BUCKET_NAME, s3_path)
+            
+            # creating FTP connection
+            ftp = FTP(FTP_HOST, FTP_USER, FTP_PWD)
 
-                if validate_uploaded_file(file_name):
-                    send_success_email(file_name)
-                else:
-                    send_error_email("File not uploaded in FTP")
-                
-                ftp.close()
+            upload_to_ftp(file_name)
 
-                # remove the file from /tmp/
-                os.remove(file_name)                        
+            if validate_uploaded_file(file_name):
+                send_success_email(file_name)
+            else:
+                send_error_email("File not uploaded in FTP")
+            
+            ftp.close()
+
+            # remove the file from /tmp/
+            os.remove(file_name)                        
         else:
             logger.info("No records found to generate report.")
             chitti_post(f"{nok_message}\n- No records found to generate report.")
