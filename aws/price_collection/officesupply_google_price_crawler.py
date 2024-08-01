@@ -26,9 +26,20 @@ urllib3.disable_warnings()
 
 http_session = None
 
+PRODUCT_NOT_FOUND = "product-not-found"
+
 class ModelEncoder(JSONEncoder):
     def default(self, o):
         return o.__dict__
+
+class NotFoundError(Exception):
+    pass
+
+class NoSellersError(Exception):
+    pass
+
+class CaptchaError(Exception):
+    pass
 
 
 class Seller:
@@ -142,17 +153,13 @@ def make_request(url: str):
         if response.status_code == 200:
             return response
         elif response.status_code == 429:
-            log_and_console_error("CAPTCHA Occurred!")
-            # exit("Quiting - Captcha occurred!")
+            logging.error("Quiting - CAPTCHA Occurred!")
+            raise CaptchaError("CAPTCHA Occurred!")
         else:
             return response
     except requests.exceptions.RequestException as req_exception:
-        # print(req_exception, exc_info=True)
-        logger.error(req_exception, exc_info=True)
+        logging.error(req_exception, exc_info=True)
         return None
-    except Exception as ex:
-        # print(ex, exc_info=True)
-        logger.error(ex, exc_info=True)
 
 def extract_next_urls(response: requests.Response):
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -252,69 +259,82 @@ def scrape_data(req: Request):
 
     #################################   Extract Details   #################################
     start = datetime.now()
+    try:
+        result = re.search('/product/(.*)/', url_in)
 
-    result = re.search('/product/(.*)/', url_in)
+        if(result is not None):
+            uid = result.group(1)
+            new_url = 'https://www.google.com/shopping/product/<urlid>/offers?prds=cid:<urlid>,cs:1,scoring:p'
+            url = new_url.replace('<urlid>', uid)
+            html_response = make_request(url)
+            # print(html_response)
 
-    if(result is not None):
-        uid = result.group(1)
-        new_url = 'https://www.google.com/shopping/product/<urlid>/offers?prds=cid:<urlid>,cs:1,scoring:p'
-        url = new_url.replace('<urlid>', uid)
-        html_response = make_request(url)
-        # print(html_response)
-
-        if html_response is None:
-            log_and_console_error("Error Occurred!")
-            return Product(req, None, "ERROR")
-            # write_into_error_file(input_record)
-            # update_input_to_retry(req, 'RETRY')
-            # continue  # Skipping after writing into error file
-        else:
-            sellers_details = extract_data(html_response)            
-            next_urls = extract_next_urls(html_response)
-            if(len(next_urls)):
-                next_urls.pop()
-                # Restricting to first 1 URL to limit the sellers count to 25
-                limited_next_urls = next_urls[0:1]
-                log_and_console_debug(limited_next_urls)
-                for next_url in limited_next_urls:
-                    next_url = "https://www.google.com" + next_url
-                    next_page_response = make_request(next_url)
-                    if next_page_response is not None:
-                        sellers_details.extend(extract_data(next_page_response))
-            
-            if(len(sellers_details)):
-
-                found_sellers = set()
-                dist_sellers = []
-                for seller in sellers_details:
-                    if seller.name.lower() not in found_sellers:
-                        dist_sellers.append(seller)
-                    found_sellers.add(seller.name.lower())
-
-                # Sorting with the price, second value from the array
-                dist_sellers.sort(key=lambda x: float(x.price))
-
-                # Limiting the seller count to 25
-                dist_sellers = dist_sellers[0:25]                
-
-                log_and_console_debug(f'Time taken to scrape this product {datetime.now() - start}')
-                log_and_console_info(f"Found {len(dist_sellers)} sellers")
-                
-                sellers_details_str = ""
-                status = "OK"                    
-                    
-                # Joining list of seller objects 
-                sellers_details_str = '|'.join(["|".join([sel.name, str(sel.price), str(sel.shipping)]) for sel in dist_sellers])
-
-                ouput_str = sku + "|" + mm_dd_yyyy + "|" + sellers_details_str
+            if html_response is None:
+                log_and_console_error("Error Occurred!")
+                return Product(req, None, "ERROR")
+                # write_into_error_file(input_record)
+                # update_input_to_retry(req, 'RETRY')
+                # continue  # Skipping after writing into error file
             else:
-                log_and_console_info("Not Found valid sellers!")
-                status = "NO_SELLERS"
-                ouput_str = None
+                sellers_details = extract_data(html_response)            
+                next_urls = extract_next_urls(html_response)
+                if(len(next_urls)):
+                    next_urls.pop()
+                    # Restricting to first 1 URL to limit the sellers count to 25
+                    limited_next_urls = next_urls[0:1]
+                    log_and_console_debug(limited_next_urls)
+                    for next_url in limited_next_urls:
+                        next_url = "https://www.google.com" + next_url
+                        next_page_response = make_request(next_url)
+                        if next_page_response is not None:
+                            sellers_details.extend(extract_data(next_page_response))
+                
+                if(len(sellers_details)):
 
-            return Product(req, ouput_str, status)
-    else:
-        log_and_console_error("Error - Not valid google url!")
+                    found_sellers = set()
+                    dist_sellers = []
+                    for seller in sellers_details:
+                        if seller.name.lower() not in found_sellers:
+                            dist_sellers.append(seller)
+                        found_sellers.add(seller.name.lower())
+
+                    # Sorting with the price, second value from the array
+                    dist_sellers.sort(key=lambda x: float(x.price))
+
+                    # Limiting the seller count to 25
+                    dist_sellers = dist_sellers[0:25]                
+
+                    log_and_console_debug(f'Time taken to scrape this product {datetime.now() - start}')
+                    log_and_console_info(f"Found {len(dist_sellers)} sellers")
+                    
+                    sellers_details_str = ""
+                    status = "OK"                    
+                        
+                    # Joining list of seller objects 
+                    sellers_details_str = '|'.join(["|".join([sel.name, str(sel.price), str(sel.shipping)]) for sel in dist_sellers])
+
+                    ouput_str = sku + "|" + mm_dd_yyyy + "|" + sellers_details_str
+                else:
+                    log_and_console_info("Not Found valid sellers!")
+                    status = "NO_SELLERS"
+                    ouput_str = None
+
+        else:
+            log_and_console_error("Error - Not valid google url!")
+    except NoSellersError:
+        logger.info(f"No Sellers found for {req.strike_id}")
+        status = "NO_SELLERS"
+    except NotFoundError:
+        logger.info(f"Product Not Found for {req.strike_id}")
+        status = "NOT_FOUND"
+    except CaptchaError:
+        raise CaptchaError
+    except Exception as ex:
+        status = "ERROR"
+        logger.error(f"Exception occurred for Strike ID {req.strike_id}")
+        logger.error(ex, exc_info=True)
+
+    return Product(req, ouput_str, status)
 
 
 def lambda_handler(event, context):

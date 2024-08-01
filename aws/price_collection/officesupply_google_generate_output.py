@@ -21,25 +21,17 @@ s3 = boto3.client('s3')
 
 rcu = 0
 
+total_capacity_units = 0
 def calculate_and_updat_rcu(response):
-  """Calculates the RCU consumed by a query response.
-  Args:
-    response: The response from a DynamoDB query.
-  Returns:
-    The number of RCUs consumed by the query.
-  """
-  global rcu
 
-  # Get the number of items returned by the query.
-  num_items = len(response['Items'])
+    global total_capacity_units
+    consumed_capacity = 0
+    try:
+        consumed_capacity = response['ConsumedCapacity']['CapacityUnits']
+    except Exception:
+        logger.error("Something went wrong in Capacity Units measurement.")
 
-  # Calculate the RCU consumed by each item.
-  rcu_per_item = 1 if response['Count'] else 0.5
-
-  # Calculate the total RCU consumed by the query.
-  total_rcu = num_items * rcu_per_item
-
-  rcu += total_rcu
+    total_capacity_units += consumed_capacity
 
 def create_file_with_input(file_name:str, item_list: list):
     if len(item_list):
@@ -76,12 +68,14 @@ def lambda_handler(event, context):
         while True:
             if last_evaluated_key == None:
                 response = table.scan(
-                    FilterExpression = Attr('datetime').eq(report_datetime_db)
+                    FilterExpression = Attr('datetime').eq(report_datetime_db),
+                    ReturnConsumedCapacity='TOTAL'
                 ) # This only runs the first time - provide no ExclusiveStartKey initially
                 calculate_and_updat_rcu(response)
             else:
                 response = table.scan(
                     FilterExpression = Attr('datetime').eq(report_datetime_db),
+                    ReturnConsumedCapacity='TOTAL',
                     ExclusiveStartKey=last_evaluated_key # In subsequent calls, provide the ExclusiveStartKey
                 )
                 calculate_and_updat_rcu(response)
@@ -178,6 +172,6 @@ def lambda_handler(event, context):
         logger.error(e,exc_info=True)
         return "ERROR"
     finally:
-        logger.info(f"Consumed RCU is {rcu}")
+        logger.info(f"Total capacity units consumed is {total_capacity_units}")
     
     return "OK"
